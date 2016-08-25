@@ -30,12 +30,18 @@ class Application_Passwords {
 	 * @static
 	 */
 	 public static function add_hooks() {
- 		add_filter( 'authenticate',		array( __CLASS__, 'authenticate' ), 10, 3 );
- 		add_action( 'show_user_profile',	array( __CLASS__, 'show_user_profile' ) );
- 		add_action( 'rest_api_init',		array( __CLASS__, 'rest_api_init' ) );
- 		add_filter( 'determine_current_user',	array( __CLASS__, 'rest_api_auth_handler' ), 20 );
- 		//add_filter( 'wp_rest_server_class',	array( __CLASS__, 'wp_rest_server_class' ) );
-		
+		// i dont think this is ever called
+		//add_filter( 'authenticate',		array( __CLASS__, 'authenticate' ), 10, 3 );
+		add_action( 'show_user_profile',	array( __CLASS__, 'show_user_profile' ) );
+		add_action( 'rest_api_init',		array( __CLASS__, 'rest_api_init' ) );
+
+		/**
+		 * Im not sure why we need this?  This filter gets called on all page loads why to run any code at this
+		 * time.  For our purpose just running the code on the rest_authenication_errors should be fine.  We only
+		 * want access via application passwords, so Ill leave it out for now 
+		 */
+		//add_filter( 'determine_current_user',	array( __CLASS__, 'rest_api_auth_handler' ), 20 );
+
 		add_filter( 'rest_authentication_errors', array( __CLASS__, 'filter_rest_api_loggedin_only' ) );
 	}
 	
@@ -247,7 +253,7 @@ class Application_Passwords {
 	}
 
 	/**
-	 * Loosely Based on https://github.com/WP-API/Basic-Auth/blob/master/basic-auth.php
+	 * Removed, this callback is currently not ever run
 	 *
 	 * @since 0.1-dev
 	 *
@@ -264,19 +270,6 @@ class Application_Passwords {
 		if ( ! empty( $input_user ) ) {
 			return $input_user;
 		}
-		self::log_me("determine_current_user: NOT CALLED TWICE");
-
-		// Check that we're trying to authenticate
-		if ( ! isset( $_SERVER['PHP_AUTH_USER'] ) ) {
-			return $input_user;
-		}
-		self::log_me("determine_current_user: WE ARE AUTHENTICATING");
-
-		$user = self::authenticate( $input_user, $_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'] );
-
-		if ( is_a( $user, 'WP_User' ) ) {
-			return $user->ID;
-		}
 
 		// If it wasn't a user what got returned, just pass on what we had received originally.
 		return $input_user;
@@ -284,6 +277,10 @@ class Application_Passwords {
 	
 	/**
 	 * Check authentication of REST API calls
+	 *
+	 * @since 0.5
+	 * @access public
+	 * @static
 	 *
  	 * @param WP_Error|null|bool $result WP_Error if authentication error, null if authentication
  	 *                                      method wasn't used, true if authentication succeeded.
@@ -295,28 +292,38 @@ class Application_Passwords {
 		if ( null !== $result ) {
 			return $result;
 		}
-		self::log_me("rest_authentication_errors: NO AUTH DONE");
-		
-		if ( isset( $_SERVER['PHP_AUTH_USER'] ) ) {
-			self::log_me("rest_authentication_errors: PHP_AUTH_USER is: " . $_SERVER['PHP_AUTH_USER'] );
-		} else {
-			self::log_me("rest_authentication_errors: server PHP_AUTH_USER is not set");
-		}
-		
-		if ( ! isset( $_SERVER['PHP_AUTH_USER'] ) || ! isset( $_SERVER['PHP_AUTH_PW'] ) ) {
-			return $result;
-		}
-		self::log_me("rest_authentication_errors: PHP_AUTH_USER IS SET");
-		
-		$user = self::authenticate( null, $_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'] );
-		
-		self::log_me("rest_authentication_errors: AUTHENTICATED");
-		if ( $user instanceof WP_User ) {
-			wp_set_current_user( $user->ID );
-			return true;
+
+		/* This code is from https://github.com/graham73may
+		 * It is a Fix for Basic Auth not being passed through with PHP in CGI 
+		 * Still need 'SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1' in .htaccess
+		 */
+		if ( !isset( $_SERVER['PHP_AUTH_USER'] ) && ( isset( $_SERVER['HTTP_AUTHORIZATION'] ) || isset( $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ) ) ) {
+			if ( isset( $_SERVER['HTTP_AUTHORIZATION'] ) ) {
+				$header = $_SERVER['HTTP_AUTHORIZATION'];
+			} else {
+				$header = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+			}
+
+			if ( !empty( $header ) ) {
+				list( $_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'] ) = explode( ':', base64_decode(substr( $header, 6 ) ) );
+			}
 		}
 
-		return $result;
+		// if the user is not using an application password throw an error
+		if ( ! isset( $_SERVER['PHP_AUTH_USER'] ) || ! isset( $_SERVER['PHP_AUTH_PW'] ) ) {
+			return new WP_Error( 'restx_logged_out', 'Sorry, you need to login to make a request.', array( 'status' => 401 ) );
+		}
+
+		$user = self::authenticate( null, $_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'] );
+
+		if ( $user instanceof WP_User ) {
+			self::log_me("rest_authentication_errors: Authenticate successful");
+			wp_set_current_user( $user->ID );
+			return true;
+		} 
+		
+		self::log_me("rest_authentication_errors: AUTHENTICATE failed");
+		return new WP_Error( 'restx_logged_out', 'Invalid, you must be logged in to make a request.', array( 'status' => 401 ) );
 	}
 
 	/**
@@ -334,7 +341,7 @@ class Application_Passwords {
 	 * @return mixed
 	 */
 	public static function authenticate( $input_user, $username, $password ) {
-		self::log_me("Authenticate");
+		self::log_me("Authenticate: Start");
 		$api_request = ( defined( 'XMLRPC_REQUEST' ) && XMLRPC_REQUEST ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST );
 		if ( ! apply_filters( 'application_password_is_api_request', $api_request ) ) {
 			return $input_user;
@@ -344,6 +351,7 @@ class Application_Passwords {
 
 		// If the login name is invalid, short circuit.
 		if ( ! $user ) {
+			self::log_me("Authenticate: not a valid login - " . $username);
 			return $input_user;
 		}
 
@@ -356,6 +364,7 @@ class Application_Passwords {
 		$password = preg_replace( '/[^a-z\d]/i', '', $password );
 
 		$hashed_passwords = get_user_meta( $user->ID, self::USERMETA_KEY_APPLICATION_PASSWORDS, true );
+		self::log_me($hashed_passwords);
 
 		foreach ( $hashed_passwords as $key => $item ) {
 			if ( wp_check_password( $password, $item['password'], $user->ID ) ) {
@@ -367,6 +376,7 @@ class Application_Passwords {
 			}
 		}
 
+		self::log_me("Authenticate: end default return");
 		// By default, return what we've been passed.
 		return $input_user;
 	}

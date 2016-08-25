@@ -12,6 +12,9 @@ To better understand how it works I am playing around with this plugin.
 * determine_current_user filter is called on every page
 * rest_authentication_errors filter is only called on REST API requests
 * [This change](https://github.com/georgestephanis/application-passwords/pull/47/files) is the direction I went and added a trigger on filter rest_authentication_errors 
+* [This idea](https://github.com/WP-API/Basic-Auth/pull/13/commits/ea1efb8d02d41c4a11e156680127c635e75f3a0f) looks interesting however I did not actually test it - I went with the first 2 points instead
+* [This idea](https://github.com/WP-API/Basic-Auth/pull/32/files) also looks good but 
+
 
 Everything below is from the original plugin which can be found at:
 
