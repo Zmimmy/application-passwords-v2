@@ -34,7 +34,7 @@ class Application_Passwords {
  		add_action( 'show_user_profile',	array( __CLASS__, 'show_user_profile' ) );
  		add_action( 'rest_api_init',		array( __CLASS__, 'rest_api_init' ) );
  		add_filter( 'determine_current_user',	array( __CLASS__, 'rest_api_auth_handler' ), 20 );
- 		add_filter( 'wp_rest_server_class',	array( __CLASS__, 'wp_rest_server_class' ) );
+ 		//add_filter( 'wp_rest_server_class',	array( __CLASS__, 'wp_rest_server_class' ) );
 		
 		add_filter( 'rest_authentication_errors', array( __CLASS__, 'filter_rest_api_loggedin_only' ) );
 	}
@@ -46,17 +46,15 @@ class Application_Passwords {
      * @param	 {string|object} message to write to the log file
      *
      */
-    public function log_me( $message ) {
-      if ( $this->SP_DEBUG ) {
-        $prefix = "[PUBLIC][". $this->location ."] ";
-        if ( WP_DEBUG === true ) {
-          if ( is_array( $message ) || is_object( $message ) ) {
-              error_log( $prefix . print_r( $message, true ) );
-          } else {
-              error_log( $prefix . $message );
-          }
-        }
-      }
+    public static function log_me( $message ) {
+	    $prefix = "[PUBLIC][APPLICATION-PASSWORD-V2] ";
+	    if ( WP_DEBUG === true ) {
+	      if ( is_array( $message ) || is_object( $message ) ) {
+	          error_log( $prefix . print_r( $message, true ) );
+	      } else {
+	          error_log( $prefix . $message );
+	      }
+	    }
     }
 
 	/**
@@ -261,16 +259,18 @@ class Application_Passwords {
 	 * @return WP_User|bool
 	 */
 	public static function rest_api_auth_handler( $input_user ){
-		$this->log_me("Start rest_api_auth_handler");
+		self::log_me("determine_current_user: START " . $_SERVER['HTTP_USER_AGENT'] . "(" . $_SERVER['REMOTE_ADDR'] . ")");
 		// Don't authenticate twice
 		if ( ! empty( $input_user ) ) {
 			return $input_user;
 		}
+		self::log_me("determine_current_user: NOT CALLED TWICE");
 
 		// Check that we're trying to authenticate
 		if ( ! isset( $_SERVER['PHP_AUTH_USER'] ) ) {
 			return $input_user;
 		}
+		self::log_me("determine_current_user: WE ARE AUTHENTICATING");
 
 		$user = self::authenticate( $input_user, $_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'] );
 
@@ -282,14 +282,42 @@ class Application_Passwords {
 		return $input_user;
 	}
 	
-	public function filter_rest_api_loggedin_only( $result ) {
-		$this->log_me("rest_authentication_errors called");
-			if ( ! empty( $result ) ) {
-				return $result;
-			}
-			
+	/**
+	 * Check authentication of REST API calls
+	 *
+ 	 * @param WP_Error|null|bool $result WP_Error if authentication error, null if authentication
+ 	 *                                      method wasn't used, true if authentication succeeded.
+ 	 * @return WP_Error|null|bool
+	 */
+	public static function filter_rest_api_loggedin_only( $result ) {
+		self::log_me("rest_authentication_errors: START " . $_SERVER['HTTP_USER_AGENT'] . "(" . $_SERVER['REMOTE_ADDR'] . ")");
+		// Skip if some other method of authentication has been done.
+		if ( null !== $result ) {
 			return $result;
-	   }
+		}
+		self::log_me("rest_authentication_errors: NO AUTH DONE");
+		
+		if ( isset( $_SERVER['PHP_AUTH_USER'] ) ) {
+			self::log_me("rest_authentication_errors: PHP_AUTH_USER is: " . $_SERVER['PHP_AUTH_USER'] );
+		} else {
+			self::log_me("rest_authentication_errors: server PHP_AUTH_USER is not set");
+		}
+		
+		if ( ! isset( $_SERVER['PHP_AUTH_USER'] ) || ! isset( $_SERVER['PHP_AUTH_PW'] ) ) {
+			return $result;
+		}
+		self::log_me("rest_authentication_errors: PHP_AUTH_USER IS SET");
+		
+		$user = self::authenticate( null, $_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'] );
+		
+		self::log_me("rest_authentication_errors: AUTHENTICATED");
+		if ( $user instanceof WP_User ) {
+			wp_set_current_user( $user->ID );
+			return true;
+		}
+
+		return $result;
+	}
 
 	/**
 	 * Filter the user to authenticate.
@@ -306,7 +334,7 @@ class Application_Passwords {
 	 * @return mixed
 	 */
 	public static function authenticate( $input_user, $username, $password ) {
-		$this->log_me("Authenticate");
+		self::log_me("Authenticate");
 		$api_request = ( defined( 'XMLRPC_REQUEST' ) && XMLRPC_REQUEST ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST );
 		if ( ! apply_filters( 'application_password_is_api_request', $api_request ) ) {
 			return $input_user;

@@ -3,6 +3,16 @@
 
 To better understand how it works I am playing around with this plugin.  
 
+## Notes/Learning
+
+* On the dreamhost VPS the basic authentication header is not being passed thru to wordpress by default so by default $_SERVER['PHP_AUTH_USER'] is never set and thus authentication never takes place
+* `SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1` seems to fix the above issue
+* The original plug, is designed to allow multiple authentication methods.  So if no authentication is tried the REST API still works.
+* The authenticate filter does not seem to be ever called.
+* determine_current_user filter is called on every page
+* rest_authentication_errors filter is only called on REST API requests
+* [This change](https://github.com/georgestephanis/application-passwords/pull/47/files) is the direction I went and added a trigger on filter rest_authentication_errors 
+
 Everything below is from the original plugin which can be found at:
 
 [https://github.com/georgestephanis/application-passwords](https://github.com/georgestephanis/application-passwords)
