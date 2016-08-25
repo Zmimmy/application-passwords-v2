@@ -35,7 +35,29 @@ class Application_Passwords {
  		add_action( 'rest_api_init',		array( __CLASS__, 'rest_api_init' ) );
  		add_filter( 'determine_current_user',	array( __CLASS__, 'rest_api_auth_handler' ), 20 );
  		add_filter( 'wp_rest_server_class',	array( __CLASS__, 'wp_rest_server_class' ) );
+		
+		add_filter( 'rest_authentication_errors', array( __CLASS__, 'filter_rest_api_loggedin_only' ) );
 	}
+	
+	/**
+     * Utility function to write message to the error log
+     *
+     * @since    1.0.0
+     * @param	 {string|object} message to write to the log file
+     *
+     */
+    public function log_me( $message ) {
+      if ( $this->SP_DEBUG ) {
+        $prefix = "[PUBLIC][". $this->location ."] ";
+        if ( WP_DEBUG === true ) {
+          if ( is_array( $message ) || is_object( $message ) ) {
+              error_log( $prefix . print_r( $message, true ) );
+          } else {
+              error_log( $prefix . $message );
+          }
+        }
+      }
+    }
 
 	/**
 	 * Prevent caching of unauthenticated status.  See comment below.
@@ -239,6 +261,7 @@ class Application_Passwords {
 	 * @return WP_User|bool
 	 */
 	public static function rest_api_auth_handler( $input_user ){
+		$this->log_me("Start rest_api_auth_handler");
 		// Don't authenticate twice
 		if ( ! empty( $input_user ) ) {
 			return $input_user;
@@ -258,6 +281,15 @@ class Application_Passwords {
 		// If it wasn't a user what got returned, just pass on what we had received originally.
 		return $input_user;
 	}
+	
+	public function filter_rest_api_loggedin_only( $result ) {
+		$this->log_me("rest_authentication_errors called");
+			if ( ! empty( $result ) ) {
+				return $result;
+			}
+			
+			return $result;
+	   }
 
 	/**
 	 * Filter the user to authenticate.
@@ -274,6 +306,7 @@ class Application_Passwords {
 	 * @return mixed
 	 */
 	public static function authenticate( $input_user, $username, $password ) {
+		$this->log_me("Authenticate");
 		$api_request = ( defined( 'XMLRPC_REQUEST' ) && XMLRPC_REQUEST ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST );
 		if ( ! apply_filters( 'application_password_is_api_request', $api_request ) ) {
 			return $input_user;

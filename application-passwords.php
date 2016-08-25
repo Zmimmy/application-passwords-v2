@@ -1,11 +1,10 @@
 <?php
 /**
- * Plugin Name: Application Passwords
- * Plugin URI: http://github.com/georgestephanis/application-passwords/
+ * Plugin Name: Application Passwords v2
+ * Plugin URI: https://github.com/Zmimmy/application-passwords-v2
  * Description: A prototype framework to add application passwords to core.
- * Author: George Stephanis
+ * Author: George Stephanis 
  * Version: 0.1-dev
- * Author URI: http://stephanis.info
  */
 
 /**
